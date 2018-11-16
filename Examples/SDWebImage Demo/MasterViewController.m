@@ -56,6 +56,8 @@
         
         // HTTP NTLM auth example
         // Add your NTLM image url to the array below and replace the credentials
+        // TODO
+        // 添加imageDownloader 的下载username 以及password ，暂时不知道用来做什么？？
         [SDWebImageManager sharedManager].imageDownloader.username = @"httpwatch";
         [SDWebImageManager sharedManager].imageDownloader.password = @"httpwatch01";
         
