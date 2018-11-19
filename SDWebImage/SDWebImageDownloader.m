@@ -214,14 +214,17 @@
     }
 }
 
+//创建下载器，开始下载图片
 - (NSOperation<SDWebImageDownloaderOperationInterface> *)createDownloaderOperationWithUrl:(nullable NSURL *)url
                                                                                   options:(SDWebImageDownloaderOptions)options {
+    //下载请求超时的时间
     NSTimeInterval timeoutInterval = self.downloadTimeout;
     if (timeoutInterval == 0.0) {
         timeoutInterval = 15.0;
     }
 
     // In order to prevent from potential duplicate caching (NSURLCache + SDImageCache) we disable the cache for image requests if told otherwise
+    // 设置缓存策略
     NSURLRequestCachePolicy cachePolicy = options & SDWebImageDownloaderUseNSURLCache ? NSURLRequestUseProtocolCachePolicy : NSURLRequestReloadIgnoringLocalCacheData;
     NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:url
                                                                 cachePolicy:cachePolicy
@@ -229,6 +232,7 @@
     
     request.HTTPShouldHandleCookies = (options & SDWebImageDownloaderHandleCookies);
     request.HTTPShouldUsePipelining = YES;
+    //如果设置了标题过滤
     if (self.headersFilter) {
         request.allHTTPHeaderFields = self.headersFilter(url, [self allHTTPHeaderFields]);
     }
@@ -275,18 +279,20 @@
     UNLOCK(self.operationsLock);
 }
 
+// 下载器 开始从网络下载图片
 - (nullable SDWebImageDownloadToken *)downloadImageWithURL:(nullable NSURL *)url
                                                    options:(SDWebImageDownloaderOptions)options
                                                   progress:(nullable SDWebImageDownloaderProgressBlock)progressBlock
                                                  completed:(nullable SDWebImageDownloaderCompletedBlock)completedBlock {
     // The URL will be used as the key to the callbacks dictionary so it cannot be nil. If it is nil immediately call the completed block with no image or data.
+    // 首先判断 URL 是否存在 ，如果不存在直接返回
     if (url == nil) {
         if (completedBlock != nil) {
             completedBlock(nil, nil, nil, NO);
         }
         return nil;
     }
-    
+    //加锁
     LOCK(self.operationsLock);
     NSOperation<SDWebImageDownloaderOperationInterface> *operation = [self.URLOperations objectForKey:url];
     // There is a case that the operation may be marked as finished, but not been removed from `self.URLOperations`.
