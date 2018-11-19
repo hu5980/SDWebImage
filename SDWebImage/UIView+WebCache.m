@@ -60,16 +60,22 @@ static char TAG_ACTIVITY_SHOW;
                           progress:(nullable SDWebImageDownloaderProgressBlock)progressBlock
                          completed:(nullable SDExternalCompletionBlock)completedBlock
                            context:(nullable NSDictionary<NSString *, id> *)context {
+    // HUGY 11.19
+    // 获取有效的OperationKey 没有的话就拿到当前的类名作为key  作用是什么呢？？？
     NSString *validOperationKey = operationKey ?: NSStringFromClass([self class]);
+    // 取消下载
     [self sd_cancelImageLoadOperationWithKey:validOperationKey];
+    //设置关联对象url
     objc_setAssociatedObject(self, &imageURLKey, url, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    
+    //通过SDWebImageInternalSetImageGroupKey 获取GCD的 group
     dispatch_group_t group = context[SDWebImageInternalSetImageGroupKey];
+    //如果 options 与 SDWebImageDelayPlaceholder 为false
     if (!(options & SDWebImageDelayPlaceholder)) {
         if (group) {
             dispatch_group_enter(group);
         }
         dispatch_main_async_safe(^{
+            //设置image 为 placeholder
             [self sd_setImage:placeholder imageData:nil basedOnClassOrViaCustomSetImageBlock:setImageBlock];
         });
     }
@@ -83,17 +89,22 @@ static char TAG_ACTIVITY_SHOW;
 #endif
         
         // reset the progress
+        // 重设totalUnitCount（总大小） 跟 completedUnitCount（当前大小）
         self.sd_imageProgress.totalUnitCount = 0;
         self.sd_imageProgress.completedUnitCount = 0;
-        
+        // 获取SDWebImage管理器
         SDWebImageManager *manager = [context objectForKey:SDWebImageExternalCustomManagerKey];
+        //如果管理器不存在 则新建一个
         if (!manager) {
             manager = [SDWebImageManager sharedManager];
         }
         
         __weak __typeof(self)wself = self;
+        //创建 下载进度Block
         SDWebImageDownloaderProgressBlock combinedProgressBlock = ^(NSInteger receivedSize, NSInteger expectedSize, NSURL * _Nullable targetURL) {
+            //设置totalUnitCount
             wself.sd_imageProgress.totalUnitCount = expectedSize;
+            //设置receivedSize
             wself.sd_imageProgress.completedUnitCount = receivedSize;
             if (progressBlock) {
                 progressBlock(receivedSize, expectedSize, targetURL);

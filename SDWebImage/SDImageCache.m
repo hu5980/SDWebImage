@@ -507,7 +507,9 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
     return [self queryCacheOperationForKey:key options:0 done:doneBlock];
 }
 
+//通过key值查询缓存
 - (nullable NSOperation *)queryCacheOperationForKey:(nullable NSString *)key options:(SDImageCacheOptions)options done:(nullable SDCacheQueryCompletedBlock)doneBlock {
+    //如果缓存的key不存在 ，则直接调用doneBlock 结束查询
     if (!key) {
         if (doneBlock) {
             doneBlock(nil, nil, SDImageCacheTypeNone);
@@ -516,7 +518,9 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
     }
     
     // First check the in-memory cache...
+    // 1 首先进行内存缓存查询
     UIImage *image = [self imageFromMemoryCacheForKey:key];
+    // 如果拿到了image 并且设置了SDImageCacheQueryDataWhenInMemory。则只进行内存缓存
     BOOL shouldQueryMemoryOnly = (image && !(options & SDImageCacheQueryDataWhenInMemory));
     if (shouldQueryMemoryOnly) {
         if (doneBlock) {
@@ -524,26 +528,35 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
         }
         return nil;
     }
-    
+    //创建一个NSOperation
     NSOperation *operation = [NSOperation new];
+    //创建一个queryDiskBlock
     void(^queryDiskBlock)(void) =  ^{
+        //如果operation 被取消了 ，则直接返回
         if (operation.isCancelled) {
             // do not call the completion if cancelled
             return;
         }
         
+        //添加到自动释放池里面
         @autoreleasepool {
+            //通过搜索key获取数据
             NSData *diskData = [self diskImageDataBySearchingAllPathsForKey:key];
             UIImage *diskImage;
+            //初始化缓存type
             SDImageCacheType cacheType = SDImageCacheTypeNone;
+            //如果image存在
             if (image) {
                 // the image is from in-memory cache
                 diskImage = image;
                 cacheType = SDImageCacheTypeMemory;
             } else if (diskData) {
+                //设置cacheType 为从硬盘获取
                 cacheType = SDImageCacheTypeDisk;
                 // decode image data only if in-memory cache missed
+                // 图片解码
                 diskImage = [self diskImageForKey:key data:diskData options:options];
+                //如果解码图片存在 ，并且配置里面设置了shouldCacheImagesInMemory 则将图片缓存到内存中
                 if (diskImage && self.config.shouldCacheImagesInMemory) {
                     NSUInteger cost = SDCacheCostForImage(diskImage);
                     [self.memCache setObject:diskImage forKey:key cost:cost];

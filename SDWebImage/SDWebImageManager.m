@@ -10,6 +10,7 @@
 #import "NSImage+WebCache.h"
 #import <objc/message.h>
 
+//信号量的形式进行加锁
 #define LOCK(lock) dispatch_semaphore_wait(lock, DISPATCH_TIME_FOREVER);
 #define UNLOCK(lock) dispatch_semaphore_signal(lock);
 
@@ -67,6 +68,7 @@
         return @"";
     }
 
+    //判断是否存在 cacheKeyFilter 如果有则使用缓存过滤规则获取key 没有则或者url的absoluteString
     if (self.cacheKeyFilter) {
         return self.cacheKeyFilter(url);
     } else {
@@ -123,10 +125,12 @@
 
     // Very common mistake is to send the URL using NSString object instead of NSURL. For some strange reason, Xcode won't
     // throw any warning for this type mismatch. Here we failsafe this error by allowing URLs to be passed as NSString.
+    // 假如URL 是NSString 类型 则将url转化成NSURL类型
     if ([url isKindOfClass:NSString.class]) {
         url = [NSURL URLWithString:(NSString *)url];
     }
 
+    // 加入转化失败了 ，则将url设置为nil
     // Prevents app crashing on argument type error like sending NSNull instead of NSURL
     if (![url isKindOfClass:NSURL.class]) {
         url = nil;
@@ -135,6 +139,7 @@
     SDWebImageCombinedOperation *operation = [SDWebImageCombinedOperation new];
     operation.manager = self;
 
+    //判断URL是不是一个错误的URL ，这里是从failedURLs 数组里面取
     BOOL isFailedUrl = NO;
     if (url) {
         LOCK(self.failedURLsLock);
@@ -142,34 +147,44 @@
         UNLOCK(self.failedURLsLock);
     }
 
+    // 对错误的url进行处理 （错误情况 url长度为0 ，或者是一个FailedUrl ）
     if (url.absoluteString.length == 0 || (!(options & SDWebImageRetryFailed) && isFailedUrl)) {
         [self callCompletionBlockForOperation:operation completion:completedBlock error:[NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorFileDoesNotExist userInfo:nil] url:url];
         return operation;
     }
 
+    //runningOperations是一个集合 ，因为可能会同时对同一个URL进行下载，此时要进行加锁操作
     LOCK(self.runningOperationsLock);
     [self.runningOperations addObject:operation];
     UNLOCK(self.runningOperationsLock);
+    // 获取当前URL 的cacheKey
     NSString *key = [self cacheKeyForURL:url];
     
+    // 初始化缓存策略 ，并根据参数进行设置
     SDImageCacheOptions cacheOptions = 0;
     if (options & SDWebImageQueryDataWhenInMemory) cacheOptions |= SDImageCacheQueryDataWhenInMemory;
     if (options & SDWebImageQueryDiskSync) cacheOptions |= SDImageCacheQueryDiskSync;
     if (options & SDWebImageScaleDownLargeImages) cacheOptions |= SDImageCacheScaleDownLargeImages;
     
+    // 初始化一个weakOperation 变量
     __weak SDWebImageCombinedOperation *weakOperation = operation;
+    // 从内存缓存或者硬盘缓存获取图片 （有可能成功 或者失败）
     operation.cacheOperation = [self.imageCache queryCacheOperationForKey:key options:cacheOptions done:^(UIImage *cachedImage, NSData *cachedData, SDImageCacheType cacheType) {
+        //返回从内存缓存或者硬盘缓存获取的数据。 解码过的到的图片 ，二进制的图片数据 ，以及缓存类型
         __strong __typeof(weakOperation) strongOperation = weakOperation;
+        //如果下载线程已经结束了 则将其移出
         if (!strongOperation || strongOperation.isCancelled) {
             [self safelyRemoveOperationFromRunning:strongOperation];
             return;
         }
         
         // Check whether we should download image from network
+        // 首先检查是否需要下载
         BOOL shouldDownload = (!(options & SDWebImageFromCacheOnly))
             && (!cachedImage || options & SDWebImageRefreshCached)
             && (![self.delegate respondsToSelector:@selector(imageManager:shouldDownloadImageForURL:)] || [self.delegate imageManager:self shouldDownloadImageForURL:url]);
         if (shouldDownload) {
+            //如果缓存图片存在 ，但是设置了SDWebImageRefreshCached ，则调用callCompletionBlockForOperation ，但是会继续下载
             if (cachedImage && options & SDWebImageRefreshCached) {
                 // If image was found in the cache but SDWebImageRefreshCached is provided, notify about the cached image
                 // AND try to re-download it in order to let a chance to NSURLCache to refresh it from server.
@@ -177,6 +192,7 @@
             }
 
             // download if no image or requested to refresh anyway, and download allowed by delegate
+            // 初始化 并根据参数设置 SDWebImageDownloaderOptions
             SDWebImageDownloaderOptions downloaderOptions = 0;
             if (options & SDWebImageLowPriority) downloaderOptions |= SDWebImageDownloaderLowPriority;
             if (options & SDWebImageProgressiveDownload) downloaderOptions |= SDWebImageDownloaderProgressiveDownload;
