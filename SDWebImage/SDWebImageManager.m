@@ -214,12 +214,15 @@
             __weak typeof(strongOperation) weakSubOperation = strongOperation;
             strongOperation.downloadToken = [self.imageDownloader downloadImageWithURL:url options:downloaderOptions progress:progressBlock completed:^(UIImage *downloadedImage, NSData *downloadedData, NSError *error, BOOL finished) {
                 __strong typeof(weakSubOperation) strongSubOperation = weakSubOperation;
+                //判断线程是否结束 ,结束则什么都不做
                 if (!strongSubOperation || strongSubOperation.isCancelled) {
                     // Do nothing if the operation was cancelled
                     // See #699 for more details
                     // if we would call the completedBlock, there could be a race condition between this block and another completedBlock for the same object, so if this one is called second, we will overwrite the new data
                 } else if (error) {
+                    // 这里的意思是如果返回了错误 ，意味着图片下载已经结束
                     [self callCompletionBlockForOperation:strongSubOperation completion:completedBlock error:error url:url];
+                    // 判断URL 是否是一个坏链接
                     BOOL shouldBlockFailedURL;
                     // Check whether we should block failed url
                     if ([self.delegate respondsToSelector:@selector(imageManager:shouldBlockFailedURL:withError:)]) {
@@ -235,6 +238,7 @@
                                                 && error.code != NSURLErrorNetworkConnectionLost);
                     }
                     
+                    // 如果是坏链接 则将链接添加到failedURLs 中
                     if (shouldBlockFailedURL) {
                         LOCK(self.failedURLsLock);
                         [self.failedURLs addObject:url];
@@ -242,12 +246,14 @@
                     }
                 }
                 else {
+                    // 如果设置了SDWebImageRetryFailed 则将URL从failedURLs移除
                     if ((options & SDWebImageRetryFailed)) {
                         LOCK(self.failedURLsLock);
                         [self.failedURLs removeObject:url];
                         UNLOCK(self.failedURLsLock);
                     }
                     
+                    // 判断是否只缓存到磁盘
                     BOOL cacheOnDisk = !(options & SDWebImageCacheMemoryOnly);
                     
                     // We've done the scale process in SDWebImageDownloader with the shared manager, this is used for custom manager and avoid extra scale.
@@ -260,6 +266,7 @@
                     } else if (downloadedImage && (!downloadedImage.images || (options & SDWebImageTransformAnimatedImage)) && [self.delegate respondsToSelector:@selector(imageManager:transformDownloadedImage:withURL:)]) {
                         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
                             @autoreleasepool {
+                                // 调用这个代理对图片进行处理
                                 UIImage *transformedImage = [self.delegate imageManager:self transformDownloadedImage:downloadedImage withURL:url];
                                 
                                 if (transformedImage && finished) {

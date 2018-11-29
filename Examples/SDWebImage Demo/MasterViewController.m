@@ -141,5 +141,4 @@
     detailViewController.imageURL = largeImageURL;
     [self.navigationController pushViewController:detailViewController animated:YES];
 }
-
 @end

@@ -279,7 +279,7 @@
     UNLOCK(self.operationsLock);
 }
 
-// 下载器 开始从网络下载图片
+// 下载器 开始从网络下载图片 包装下载的URL
 - (nullable SDWebImageDownloadToken *)downloadImageWithURL:(nullable NSURL *)url
                                                    options:(SDWebImageDownloaderOptions)options
                                                   progress:(nullable SDWebImageDownloaderProgressBlock)progressBlock
