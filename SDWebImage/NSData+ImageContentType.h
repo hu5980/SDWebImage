@@ -10,6 +10,9 @@
 #import <Foundation/Foundation.h>
 #import "SDWebImageCompat.h"
 
+/*
+ 通过图片的二进制数据获取图片类型
+ */
 typedef NS_ENUM(NSInteger, SDImageFormat) {
     SDImageFormatUndefined = -1,
     SDImageFormatJPEG = 0,

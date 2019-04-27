@@ -486,6 +486,10 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
     return [self diskImageForKey:key data:data options:0];
 }
 
+
+/*
+ 这里是 图片从硬盘中读取后的编解码  默认是异步执行的 但是设置了SDImageCacheQueryDiskSync 的话 就同步进行编解码
+ */
 - (nullable UIImage *)diskImageForKey:(nullable NSString *)key data:(nullable NSData *)data options:(SDImageCacheOptions)options {
     if (data) {
         UIImage *image = [[SDWebImageCodersManager sharedInstance] decodedImageWithData:data];
@@ -508,6 +512,13 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
     return [self queryCacheOperationForKey:key options:0 done:doneBlock];
 }
 
+/*
+ 首先查找在内存中的缓存，再根据设置的选项决定要不要继续查找。
+ 然后根据设置的选项决定是同步还是异步查找硬盘中的缓存。
+ 接着根据设置的选项决定要不要把硬盘中的缓存图片缓存到内存中。
+ 最后进行回调数据
+ */
+
 //通过key值查询缓存
 - (nullable NSOperation *)queryCacheOperationForKey:(nullable NSString *)key options:(SDImageCacheOptions)options done:(nullable SDCacheQueryCompletedBlock)doneBlock {
     //如果缓存的key不存在 ，则直接调用doneBlock 结束查询
@@ -519,29 +530,33 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
     }
     
     // First check the in-memory cache...
-    // 1 首先进行内存缓存查询
+    // 先根据key查找内存中是否有缓存
     UIImage *image = [self imageFromMemoryCacheForKey:key];
-    // 如果拿到了image 并且设置了SDImageCacheQueryDataWhenInMemory。则只进行内存缓存
+    // 如果有缓存图片，并且没设置强制从硬盘中查找缓存，就直接回调并返回了
     BOOL shouldQueryMemoryOnly = (image && !(options & SDImageCacheQueryDataWhenInMemory));
+    
+    NSLog(@"缓存查找的时候 应该是主线程 = %@",[NSThread currentThread]);
+    
     if (shouldQueryMemoryOnly) {
         if (doneBlock) {
             doneBlock(image, nil, SDImageCacheTypeMemory);
         }
         return nil;
     }
-    //创建一个NSOperation
+    // 生成一个操作对象
     NSOperation *operation = [NSOperation new];
-    //创建一个queryDiskBlock
+    // 生成一个查询硬盘缓存的代码块
     void(^queryDiskBlock)(void) =  ^{
-        //如果operation 被取消了 ，则直接返回
+        NSLog(@"默认异步硬盘查找 %@",[NSThread currentThread]);
+        // 如果操作取消就直接返回，不执行回调
         if (operation.isCancelled) {
             // do not call the completion if cancelled
             return;
         }
         
-        //添加到自动释放池里面
+        // 生成一个自动释放池  这里因为可能出现很多的并发缓存查询 所以放一个@autoreleasepool 自动释放池 释放内存
         @autoreleasepool {
-            //通过搜索key获取数据
+            // 根据key查找硬盘中是否有缓存
             NSData *diskData = [self diskImageDataBySearchingAllPathsForKey:key];
             UIImage *diskImage;
             //初始化缓存type
@@ -564,6 +579,7 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
                 }
             }
             
+            // 如果设置了同步查询硬盘缓存的选项就直接调用，否则就主队列异步回调
             if (doneBlock) {
                 if (options & SDImageCacheQueryDiskSync) {
                     doneBlock(diskImage, diskData, cacheType);

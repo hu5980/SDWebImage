@@ -17,14 +17,16 @@
     #error SDWebImage need ARC for dispatch object
 #endif
 
+/*  定义了一个公共函数用来缩放图片 */
 inline UIImage *SDScaledImageForKey(NSString * _Nullable key, UIImage * _Nullable image) {
     if (!image) {
         return nil;
     }
-    
+     // 如果是MAC平台也不向下执行了
 #if SD_MAC
     return image;
 #elif SD_UIKIT || SD_WATCH
+    // 如果是动图，就遍历出所有的图片后递归调用该函数进行缩放，然后返回
     if ((image.images).count > 0) {
         NSMutableArray<UIImage *> *scaledImages = [NSMutableArray array];
 
@@ -45,6 +47,7 @@ inline UIImage *SDScaledImageForKey(NSString * _Nullable key, UIImage * _Nullabl
         if ([[UIScreen mainScreen] respondsToSelector:@selector(scale)]) {
 #endif
             CGFloat scale = 1;
+             // 根据传入的key中所包含的@2x和@3x来缩放图片至对应的比例后返回
             if (key.length >= 8) {
                 NSRange range = [key rangeOfString:@"@2x."];
                 if (range.location != NSNotFound) {

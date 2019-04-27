@@ -91,7 +91,7 @@
         _shouldDecompressImages = YES;
         _executionOrder = SDWebImageDownloaderFIFOExecutionOrder;
         _downloadQueue = [NSOperationQueue new];
-        _downloadQueue.maxConcurrentOperationCount = 6;
+        _downloadQueue.maxConcurrentOperationCount = 6; // 最大同时并发处理6个下载
         _downloadQueue.name = @"com.hackemist.SDWebImageDownloader";
         _URLOperations = [NSMutableDictionary new];
         SDHTTPHeadersMutableDictionary *headerDictionary = [SDHTTPHeadersMutableDictionary dictionary];
@@ -226,6 +226,7 @@
     // In order to prevent from potential duplicate caching (NSURLCache + SDImageCache) we disable the cache for image requests if told otherwise
     // 设置缓存策略
     NSURLRequestCachePolicy cachePolicy = options & SDWebImageDownloaderUseNSURLCache ? NSURLRequestUseProtocolCachePolicy : NSURLRequestReloadIgnoringLocalCacheData;
+    // 生成request
     NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:url
                                                                 cachePolicy:cachePolicy
                                                             timeoutInterval:timeoutInterval];
@@ -239,6 +240,7 @@
     else {
         request.allHTTPHeaderFields = [self allHTTPHeaderFields];
     }
+    // 生成下载操作的封装对象，并设置参数
     NSOperation<SDWebImageDownloaderOperationInterface> *operation = [[self.operationClass alloc] initWithRequest:request inSession:self.session options:options];
     operation.shouldDecompressImages = self.shouldDecompressImages;
     
@@ -253,7 +255,7 @@
     } else if (options & SDWebImageDownloaderLowPriority) {
         operation.queuePriority = NSOperationQueuePriorityLow;
     }
-    
+     // 如果选项设置了后进先出（LIFO），就让上一个操作依赖于当前操作
     if (self.executionOrder == SDWebImageDownloaderLIFOExecutionOrder) {
         // Emulate LIFO execution order by systematically adding new operations as last operation's dependency
         [self.lastAddedOperation addDependency:operation];
@@ -280,10 +282,17 @@
 }
 
 // 下载器 开始从网络下载图片 包装下载的URL
+/*
+ 先根据传入的url生成NSMutableURLRequest对象request。
+ 再根据上一步生成的对象request生成一个自定义的继承自NSOperation类的SDWebImageDownloaderOperation对象operation。
+ 接着把对象operation保存到操作对象集合中，并添加到操作队列开始执行。
+ 最后根据参数生成一个SDWebImageDownloadToken对象token返回，以便利用这个token对操作对象做一些操作
+
+ */
 - (nullable SDWebImageDownloadToken *)downloadImageWithURL:(nullable NSURL *)url
                                                    options:(SDWebImageDownloaderOptions)options
                                                   progress:(nullable SDWebImageDownloaderProgressBlock)progressBlock
-                                                 completed:(nullable SDWebImageDownloaderCompletedBlock)completedBlock {
+                                                  completed:(nullable SDWebImageDownloaderCompletedBlock)completedBlock {
     // The URL will be used as the key to the callbacks dictionary so it cannot be nil. If it is nil immediately call the completed block with no image or data.
     // 首先判断 URL 是否存在 ，如果不存在直接返回
     if (url == nil) {
@@ -294,11 +303,15 @@
     }
     //加锁
     LOCK(self.operationsLock);
+    // 从字典里查找这个下载的operation
     NSOperation<SDWebImageDownloaderOperationInterface> *operation = [self.URLOperations objectForKey:url];
     // There is a case that the operation may be marked as finished, but not been removed from `self.URLOperations`.
+    // operation 不存在 或者 operation 已经结束
     if (!operation || operation.isFinished) {
+        // 生成一个 operation
         operation = [self createDownloaderOperationWithUrl:url options:options];
         __weak typeof(self) wself = self;
+        // 设置operation 的completionBlock
         operation.completionBlock = ^{
             __strong typeof(wself) sself = wself;
             if (!sself) {
@@ -308,13 +321,16 @@
             [sself.URLOperations removeObjectForKey:url];
             UNLOCK(sself.operationsLock);
         };
+        // 添加operation 到URLOperations 里面
         [self.URLOperations setObject:operation forKey:url];
         // Add operation to operation queue only after all configuration done according to Apple's doc.
         // `addOperation:` does not synchronously execute the `operation.completionBlock` so this will not cause deadlock.
+        // 添加operation 到downloadQueue 里面
         [self.downloadQueue addOperation:operation];
     }
     UNLOCK(self.operationsLock);
-
+    
+    // 生成一个token，方便对该操作对象进行操作
     id downloadOperationCancelToken = [operation addHandlersForProgress:progressBlock completed:completedBlock];
     
     SDWebImageDownloadToken *token = [SDWebImageDownloadToken new];

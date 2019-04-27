@@ -120,8 +120,21 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
     return shouldCancel;
 }
 
+/*
+ 先判断这个操作对象是否已经被取消了，被取消就不继续执行了。
+ 再判断是否设置了后台下载选项，进行后台下载设置。
+ 接着设置网络会话对象。
+ 再根据设置的选项判断是否忽略NSURLCache的缓存。
+ 接着根据设置的选项设置任务对象的优先级。
+ 然后启动任务，调用进度回调代码块，发送通知。
+ 最后如果设置了后台下载选项，就结束后台下载任务。
+ */
 - (void)start {
+    
+    NSLog(@"start 开始线程 %@",[NSThread currentThread]);
+    // 加锁
     @synchronized (self) {
+        // 如果已经被设置为取消状态就直接复位，然后返回了
         if (self.isCancelled) {
             self.finished = YES;
             [self reset];
@@ -129,14 +142,17 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
         }
 
 #if SD_UIKIT
+        // 查看是否能获取到UIApplication类
         Class UIApplicationClass = NSClassFromString(@"UIApplication");
         BOOL hasApplication = UIApplicationClass && [UIApplicationClass respondsToSelector:@selector(sharedApplication)];
+        // 如果有UIApplication类，并且设置了进入后台依旧下载的选项
         if (hasApplication && [self shouldContinueWhenAppEntersBackground]) {
+            // 开启后台下载
             __weak __typeof__ (self) wself = self;
             UIApplication * app = [UIApplicationClass performSelector:@selector(sharedApplication)];
             self.backgroundTaskId = [app beginBackgroundTaskWithExpirationHandler:^{
                 __strong __typeof (wself) sself = wself;
-
+                // 如果后台任务执行结束，就取消任务
                 if (sself) {
                     [sself cancel];
 
@@ -146,8 +162,11 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
             }];
         }
 #endif
+         // 获取传入的网络会话对象
         NSURLSession *session = self.unownedSession;
+        // 如果没有传入网络会话对象
         if (!session) {
+            // 生成一个网络会话对象
             NSURLSessionConfiguration *sessionConfig = [NSURLSessionConfiguration defaultSessionConfiguration];
             sessionConfig.timeoutIntervalForRequest = 15;
             
@@ -161,9 +180,10 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
                                                delegateQueue:nil];
             self.ownedSession = session;
         }
-        
+        // 如果设置了忽略从NSURLCache中获取缓存的选项
         if (self.options & SDWebImageDownloaderIgnoreCachedResponse) {
             // Grab the cached data for later check
+            // 获取NSURLCache中的缓存，并保存
             NSURLCache *URLCache = session.configuration.URLCache;
             if (!URLCache) {
                 URLCache = [NSURLCache sharedURLCache];
@@ -177,15 +197,19 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
                 self.cachedData = cachedResponse.data;
             }
         }
-        
+        // 生成NSURLSessionTask类对象
         self.dataTask = [session dataTaskWithRequest:self.request];
+        // 设置属性为开始执行
         self.executing = YES;
     }
 
+    // 如果NSURLSessionTask类对象存在
     if (self.dataTask) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunguarded-availability"
+        // 因为NSURLSessionTask的priority这个属性是iOS8.0以后才有的，所以要判断一下
         if ([self.dataTask respondsToSelector:@selector(setPriority:)]) {
+            // 根据设置的选项设置优先级
             if (self.options & SDWebImageDownloaderHighPriority) {
                 self.dataTask.priority = NSURLSessionTaskPriorityHigh;
             } else if (self.options & SDWebImageDownloaderLowPriority) {
@@ -193,21 +217,26 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
             }
         }
 #pragma clang diagnostic pop
+        // 开始执行任务
         [self.dataTask resume];
+        // 获取到进度回调代码块并调用
         for (SDWebImageDownloaderProgressBlock progressBlock in [self callbacksForKey:kProgressCallbackKey]) {
             progressBlock(0, NSURLResponseUnknownLength, self.request.URL);
         }
         __weak typeof(self) weakSelf = self;
+        // 异步主队列发送下载开始通知
         dispatch_async(dispatch_get_main_queue(), ^{
             [[NSNotificationCenter defaultCenter] postNotificationName:SDWebImageDownloadStartNotification object:weakSelf];
         });
     } else {
+        // 如果没有获取到NSURLSessionTask类对象，就回调错误并返回
         [self callCompletionBlocksWithError:[NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorUnknown userInfo:@{NSLocalizedDescriptionKey : @"Task can't be initialized"}]];
         [self done];
         return;
     }
 
 #if SD_UIKIT
+    // 如果是后台任务，就关闭后台任务
     Class UIApplicationClass = NSClassFromString(@"UIApplication");
     if(!UIApplicationClass || ![UIApplicationClass respondsToSelector:@selector(sharedApplication)]) {
         return;
@@ -281,58 +310,83 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
 }
 
 #pragma mark NSURLSessionDataDelegate
-
+/**
+ 当dataTask接收到初试响应时，会调用这个代理方法
+ */
 - (void)URLSession:(NSURLSession *)session
           dataTask:(NSURLSessionDataTask *)dataTask
 didReceiveResponse:(NSURLResponse *)response
  completionHandler:(void (^)(NSURLSessionResponseDisposition disposition))completionHandler {
+    // 生成变量保存响应处置为允许继续
     NSURLSessionResponseDisposition disposition = NSURLSessionResponseAllow;
+    // 生成变量保存响应内容的预期长度，如果没获取到设置为0
     NSInteger expected = (NSInteger)response.expectedContentLength;
     expected = expected > 0 ? expected : 0;
+    // 用属性保存响应内容的预期长度
     self.expectedSize = expected;
+    // 用属性保存响应对象
     self.response = response;
+    // 生成变量保存状态码，如果没获取到设为为200
     NSInteger statusCode = [response respondsToSelector:@selector(statusCode)] ? ((NSHTTPURLResponse *)response).statusCode : 200;
+    // 生成变量保存有效性，如果状态码小于400就有效
     BOOL valid = statusCode < 400;
     //'304 Not Modified' is an exceptional one. It should be treated as cancelled if no cache data
     //URLSession current behavior will return 200 status code when the server respond 304 and URLCache hit. But this is not a standard behavior and we just add a check
+    // 如果状态码是304，并且没有缓存数据，也是无效的
     if (statusCode == 304 && !self.cachedData) {
         valid = NO;
     }
     
     if (valid) {
+        // 如果是有效的就调用进度回调代码块
         for (SDWebImageDownloaderProgressBlock progressBlock in [self callbacksForKey:kProgressCallbackKey]) {
             progressBlock(0, expected, self.request.URL);
         }
     } else {
         // Status code invalid and marked as cancelled. Do not call `[self.dataTask cancel]` which may mass up URLSession life cycle
+        // 如果是无效的就设置响应处置为取消
         disposition = NSURLSessionResponseCancel;
     }
     
+    // 主队列异步发送通知告知已收到响应
     __weak typeof(self) weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^{
         [[NSNotificationCenter defaultCenter] postNotificationName:SDWebImageDownloadReceiveResponseNotification object:weakSelf];
     });
     
+    // 调用完成处理代码块并传递响应处置设置
     if (completionHandler) {
         completionHandler(disposition);
     }
 }
 
+/**
+ 当dataTask在接收到数据时，会调用这个代理方法，这个方法在接受数据期间会反复调用
+ */
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)dataTask didReceiveData:(NSData *)data {
+    // 如果保存图片数据的属性为空，就以上面那个代理方法中获取的图片期望大小为容量，初始化这个属性
     if (!self.imageData) {
         self.imageData = [[NSMutableData alloc] initWithCapacity:self.expectedSize];
     }
+    // 将服务器返回的数据添加到属性中保存
     [self.imageData appendData:data];
 
+     // 如果设置了渐进式下载的选项，并且图片的期望大小大于零
     if ((self.options & SDWebImageDownloaderProgressiveDownload) && self.expectedSize > 0) {
         // Get the image data
+        // 获取到当前获取的图片数据
         __block NSData *imageData = [self.imageData copy];
         // Get the total bytes downloaded
+        // 获取到当前下载的图片的字节数
         const NSInteger totalSize = imageData.length;
         // Get the finish status
+        // 获取当前图片是否下载完成，如果当前下载的图片的字节数不少于图片期望的字节数就为完成
         BOOL finished = (totalSize >= self.expectedSize);
         
+        // 如果没有实例化渐进式编码器
         if (!self.progressiveCoder) {
+             // 遍历所有的编码器，如果编码器实现了SDWebImageProgressiveCoder代理，并且能够解码下载的图片数据，
+             // 就以该编码器的类实例化一个编码器对象
             // We need to create a new instance for progressive decoding to avoid conflicts
             for (id<SDWebImageCoder>coder in [SDWebImageCodersManager sharedInstance].coders) {
                 if ([coder conformsToProtocol:@protocol(SDWebImageProgressiveCoder)] &&
@@ -344,28 +398,36 @@ didReceiveResponse:(NSURLResponse *)response
         }
         
         // progressive decode the image in coder queue
+        // 自定义串行队列异步执行
         dispatch_async(self.coderQueue, ^{
+            // 创建自动释放池
             @autoreleasepool {
+                // 解码生成图片
                 UIImage *image = [self.progressiveCoder incrementallyDecodedImageWithData:imageData finished:finished];
+                // 如果生成了图片
                 if (image) {
+                    // 获取该图片链接地址对应的key
                     NSString *key = [[SDWebImageManager sharedManager] cacheKeyForURL:self.request.URL];
+                    // 缩放图片
                     image = [self scaledImageForKey:key image:image];
+                    // 如果压缩图片就压缩
                     if (self.shouldDecompressImages) {
                         image = [[SDWebImageCodersManager sharedInstance] decompressedImageWithImage:image data:&imageData options:@{SDWebImageCoderScaleDownLargeImagesKey: @(NO)}];
                     }
                     
                     // We do not keep the progressive decoding image even when `finished`=YES. Because they are for view rendering but not take full function from downloader options. And some coders implementation may not keep consistent between progressive decoding and normal decoding.
-                    
+                    // 进行完成回调
                     [self callCompletionBlocksWithImage:image imageData:nil error:nil finished:NO];
                 }
             }
         });
     }
-
+    // 回调进度
     for (SDWebImageDownloaderProgressBlock progressBlock in [self callbacksForKey:kProgressCallbackKey]) {
         progressBlock(self.imageData.length, self.expectedSize, self.request.URL);
     }
 }
+
 
 - (void)URLSession:(NSURLSession *)session
           dataTask:(NSURLSessionDataTask *)dataTask
@@ -462,6 +524,9 @@ didReceiveResponse:(NSURLResponse *)response
     }
 }
 
+/**
+ 当task接收到身份验证时，会调用这个代理方法。
+ */
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential *credential))completionHandler {
     
     NSURLSessionAuthChallengeDisposition disposition = NSURLSessionAuthChallengePerformDefaultHandling;

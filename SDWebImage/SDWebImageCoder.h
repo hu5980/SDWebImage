@@ -13,12 +13,18 @@
 /**
  A Boolean value indicating whether to scale down large images during decompressing. (NSNumber)
  */
+/**
+ 定义了一个BOOL类型的key，用于定义是否在解压缩期间缩放图片
+ */
 FOUNDATION_EXPORT NSString * _Nonnull const SDWebImageCoderScaleDownLargeImagesKey;
 
 /**
  Return the shared device-dependent RGB color space created with CGColorSpaceCreateDeviceRGB.
 
  @return The device-dependent RGB color space
+ */
+/**
+ 定义了一个单利方法，获取设备的RGB色彩空间
  */
 CG_EXTERN CGColorSpaceRef _Nonnull SDCGColorSpaceGetDeviceRGB(void);
 
@@ -27,6 +33,9 @@ CG_EXTERN CGColorSpaceRef _Nonnull SDCGColorSpaceGetDeviceRGB(void);
 
  @param imageRef The CGImageRef
  @return Return YES if CGImageRef contains alpha channel, otherwise return NO
+ */
+/**
+ 检查图片是否有透明度
  */
 CG_EXTERN BOOL SDCGImageRefContainsAlpha(_Nullable CGImageRef imageRef);
 
@@ -46,6 +55,9 @@ CG_EXTERN BOOL SDCGImageRefContainsAlpha(_Nullable CGImageRef imageRef);
  @param data The image data so we can look at it
  @return YES if this coder can decode the data, NO otherwise
  */
+/**
+ 如果实现了该方法的类能解码图片数据就返回YES；否则，就返回NO
+ */
 - (BOOL)canDecodeFromData:(nullable NSData *)data;
 
 /**
@@ -53,6 +65,9 @@ CG_EXTERN BOOL SDCGImageRefContainsAlpha(_Nullable CGImageRef imageRef);
 
  @param data The image data to be decoded
  @return The decoded image from data
+ */
+/**
+ 将图片数据解码为图片对象
  */
 - (nullable UIImage *)decodedImageWithData:(nullable NSData *)data;
 
@@ -63,6 +78,10 @@ CG_EXTERN BOOL SDCGImageRefContainsAlpha(_Nullable CGImageRef imageRef);
  @param data The pointer to original image data. The pointer itself is nonnull but image data can be null. This data will set to cache if needed. If you do not need to modify data at the sametime, ignore this param.
  @param optionsDict A dictionary containing any decompressing options. Pass {SDWebImageCoderScaleDownLargeImagesKey: @(YES)} to scale down large images
  @return The decompressed image
+ */
+/**
+ 用原始图像和图像数据解压缩图像
+ 其中参数optionsDict就是利用第一节定义的变量SDWebImageCoderScaleDownLargeImagesKey，如果value传YES就缩放图像
  */
 - (nullable UIImage *)decompressedImageWithImage:(nullable UIImage *)image
                                             data:(NSData * _Nullable * _Nonnull)data
