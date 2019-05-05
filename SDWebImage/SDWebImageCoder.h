@@ -123,6 +123,9 @@ CG_EXTERN BOOL SDCGImageRefContainsAlpha(_Nullable CGImageRef imageRef);
  @param data The image data so we can look at it
  @return YES if this coder can decode the data, NO otherwise
  */
+/**
+ 如果实现了该方法的类能逐行解码图片数据就返回YES；否则，就返回NO
+ */
 - (BOOL)canIncrementallyDecodeFromData:(nullable NSData *)data;
 
 /**
@@ -132,6 +135,9 @@ CG_EXTERN BOOL SDCGImageRefContainsAlpha(_Nullable CGImageRef imageRef);
  @param finished Whether the download has finished
  @warning because incremental decoding need to keep the decoded context, we will alloc a new instance with the same class for each download operation to avoid conflicts
  @return The decoded image from data
+ */
+/**
+ 逐行解码图片数据为图像对象
  */
 - (nullable UIImage *)incrementallyDecodedImageWithData:(nullable NSData *)data finished:(BOOL)finished;
 

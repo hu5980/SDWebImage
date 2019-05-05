@@ -113,6 +113,9 @@
     return UTType;
 }
 
+/**
+ 将指定的图片格式转换成格式标识
+ */
 + (SDImageFormat)sd_imageFormatFromUTType:(CFStringRef)uttype {
     if (!uttype) {
         return SDImageFormatUndefined;

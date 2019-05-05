@@ -14,7 +14,9 @@
 #import "UIImage+MultiFormat.h"
 
 #if SD_UIKIT || SD_WATCH
+//定义每像素字节数为4
 static const size_t kBytesPerPixel = 4;
+//定义每位字节数为8
 static const size_t kBitsPerComponent = 8;
 
 /*
@@ -23,6 +25,7 @@ static const size_t kBitsPerComponent = 8;
  * Suggested value for iPad2 and iPhone 4: 120.
  * Suggested value for iPhone 3G and iPod 2 and earlier devices: 30.
  */
+//定义解码图像的最大大小为60MB
 static const CGFloat kDestImageSizeMB = 60.0f;
 
 /*
@@ -31,21 +34,28 @@ static const CGFloat kDestImageSizeMB = 60.0f;
  * Suggested value for iPad2 and iPhone 4: 40.
  * Suggested value for iPhone 3G and iPod 2 and earlier devices: 10.
  */
+//定义用于解码图像的最大大小为20MB
 static const CGFloat kSourceImageTileSizeMB = 20.0f;
-
+//定义1MB是1024*1024Bytes
 static const CGFloat kBytesPerMB = 1024.0f * 1024.0f;
+//定义1MB的像素数是1MB的Bytes数量除以1像素的Bytes数
 static const CGFloat kPixelsPerMB = kBytesPerMB / kBytesPerPixel;
+//定义解码完的图像的最大像素数是解码完的图像最大大小乘以1MB的像素数
 static const CGFloat kDestTotalPixels = kDestImageSizeMB * kPixelsPerMB;
+//定义用于解码的图像的最大像素数是解码的图像的最大大小乘以1MB的像素数
 static const CGFloat kTileTotalPixels = kSourceImageTileSizeMB * kPixelsPerMB;
-
+//定义重叠像素大小为2像素
 static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to overlap the seems where tiles meet.
 #endif
 
 @implementation SDWebImageImageIOCoder {
+    // 定义了两个变量来保存图像的宽和高
         size_t _width, _height;
 #if SD_UIKIT || SD_WATCH
+    // 定义变量记录图像方向
         UIImageOrientation _orientation;
 #endif
+    //  定义变量记录图像源
         CGImageSourceRef _imageSource;
 }
 
@@ -66,6 +76,7 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
 }
 
 #pragma mark - Decode
+
 - (BOOL)canDecodeFromData:(nullable NSData *)data {
     switch ([NSData sd_imageFormatForImageData:data]) {
         case SDImageFormatWebP:
@@ -210,6 +221,7 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
     
     // autorelease the bitmap context and all vars to help system to free memory when there are memory warning.
     // on iOS7, do not forget to call [[SDImageCache sharedImageCache] clearMemory];
+    // 建立自动释放池，以帮助系统在收到内存警告时释放内存。
     @autoreleasepool{
         
         CGImageRef imageRef = image.CGImage;
@@ -226,6 +238,7 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
         // kCGImageAlphaNone is not supported in CGBitmapContextCreate.
         // Since the original image here has no alpha info, use kCGImageAlphaNoneSkipLast
         // to create bitmap graphics contexts without alpha info.
+        // 使用CGBitmapContextCreate()函数创建位图图像上下文
         CGContextRef context = CGBitmapContextCreate(NULL,
                                                      width,
                                                      height,
@@ -238,7 +251,9 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
         }
         
         // Draw the image into the context and retrieve the new bitmap image without alpha
+        // 利用CGContextDrawImage()函数将图片绘制到位图图像上下文中；
         CGContextDrawImage(context, CGRectMake(0, 0, width, height), imageRef);
+        // 调用CGBitmapContextCreateImage()函数从位图图像上下文中获取位图图像
         CGImageRef imageRefWithoutAlpha = CGBitmapContextCreateImage(context);
         UIImage *imageWithoutAlpha = [[UIImage alloc] initWithCGImage:imageRefWithoutAlpha scale:image.scale orientation:image.imageOrientation];
         CGContextRelease(context);
@@ -386,6 +401,7 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
     }
 }
 
+//图片编码
 - (NSData *)encodedDataWithImage:(UIImage *)image format:(SDImageFormat)format {
     if (!image) {
         return nil;
@@ -404,6 +420,7 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
     CFStringRef imageUTType = [NSData sd_UTTypeFromSDImageFormat:format];
     
     // Create an image destination.
+    // 利用CGImageDestinationCreateWithData()函数创建图像目的地
     CGImageDestinationRef imageDestination = CGImageDestinationCreateWithData((__bridge CFMutableDataRef)imageData, imageUTType, 1, NULL);
     if (!imageDestination) {
         // Handle failure.
@@ -417,9 +434,11 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
 #endif
     
     // Add your image to the destination.
+    // 使用CGImageDestinationAddImage()函数将图片对象添加到图像目的地中；
     CGImageDestinationAddImage(imageDestination, image.CGImage, (__bridge CFDictionaryRef)properties);
     
     // Finalize the destination.
+    // 调用CGImageDestinationFinalize()函数将图片对象写入到数据对象中
     if (CGImageDestinationFinalize(imageDestination) == NO) {
         // Handle failure.
         imageData = nil;
@@ -431,13 +450,18 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
 }
 
 #pragma mark - Helper
+/**
+ 判断图像是否需要解码
+ */
 + (BOOL)shouldDecodeImage:(nullable UIImage *)image {
     // Prevent "CGBitmapContextCreateImage: invalid context 0x0" error
+     // 如果没传图像就直接返回NO
     if (image == nil) {
         return NO;
     }
     
     // do not decode animated images
+    // 如果是动图也直接返回NO
     if (image.images != nil) {
         return NO;
     }
@@ -445,7 +469,13 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
     return YES;
 }
 
+/**
+ 判断是否支持HEIC类型图像的解码
+ */
 + (BOOL)canDecodeFromHEICFormat {
+    // 1.先获取进程信息对象
+    // 2.通过进程信息对象获取操作系统版本
+    // 3.如果当前操作系统版本是iOS 11+就支持HEIC类型图像的解码
     static BOOL canDecode = NO;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -471,7 +501,11 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
     return canDecode;
 }
 
+/**
+ 判断是否支持HEIC类型图像的编码
+ */
 + (BOOL)canEncodeToHEICFormat {
+    // 如果能创建CGImageDestinationRef对象就支持HEIC类型图像的编码
     static BOOL canEncode = NO;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -514,6 +548,9 @@ static const CGFloat kDestSeemOverlap = 2.0f;   // the numbers of pixels to over
 }
 
 #if SD_UIKIT || SD_WATCH
+/**
+ 判断是否缩小图片
+ */
 + (BOOL)shouldScaleDownImage:(nonnull UIImage *)image {
     BOOL shouldScaleDown = YES;
     

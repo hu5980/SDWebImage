@@ -233,6 +233,9 @@
 
 #pragma mark - Helper Fuction
 #if SD_UIKIT || SD_WATCH
+/**
+ 这个函数是计算两个整数a和b的最大公约数
+ */
 static NSUInteger gcd(NSUInteger a, NSUInteger b) {
     NSUInteger c;
     while (a != 0) {
@@ -243,6 +246,9 @@ static NSUInteger gcd(NSUInteger a, NSUInteger b) {
     return b;
 }
 
+/**
+ 这个函数是计算一个整数数组的最大公约数
+ */
 static NSUInteger gcdArray(size_t const count, NSUInteger const * const values) {
     if (count == 0) {
         return 0;
